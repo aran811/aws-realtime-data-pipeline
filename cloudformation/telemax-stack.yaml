@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Telemax Real-Time Data Pipeline
+
+Resources:
+
+  TelemaxKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: TelemaxStream
+      ShardCount: 1
+
+  TelemaxDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TelemaxData
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: device_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: device_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:DescribeStream
+                  - kinesis:ListStreams
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  TelemaxLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: TelemaxKinesisProcessor
+      Runtime: python3.9
+      Handler: kinesis_to_dynamodb.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              print("Placeholder – upload zip later")
+      Timeout: 30
+
+  LambdaKinesisMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt TelemaxKinesisStream.Arn
+      FunctionName: !Ref TelemaxLambda
+      StartingPosition: LATEST
+
+
+
+
+
+
