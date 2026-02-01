@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+
+# Lambda build artifacts
+*.zip
+
+# OS files
+.DS_Store
