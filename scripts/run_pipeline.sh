@@ -31,7 +31,7 @@ echo "Deploying CloudFormation stack..."
 cd cloudformation
 aws cloudformation create-stack \
   --stack-name telemax-realtime-stack \
-  --template-body file://cloudformation/telemax-stack.yaml \
+  --template-body file://telemax-stack.yaml \
   --capabilities CAPABILITY_NAMED_IAM
 cd ..
 
