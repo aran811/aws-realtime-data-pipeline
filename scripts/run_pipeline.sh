@@ -1,72 +1,35 @@
-#!/bin/bash
-
 # ---------------------------------------------
-# run_pipeline.sh
+# Step 5: Wait for data to appear in DynamoDB
 # ---------------------------------------------
-# Deploys and runs the Telemax real-time data pipeline
-# with proper sequencing and safety checks.
-# ---------------------------------------------
+echo "🗄️ Waiting for data to appear in DynamoDB table..."
 
-set -e
+MAX_RETRIES=12        # e.g. 12 retries
+SLEEP_SECONDS=5      # wait 5s between retries
+ATTEMPT=1
 
-STACK_NAME="telemax-realtime-stack"
-TEMPLATE_PATH="cloudformation/telemax-stack.yaml"
-LAMBDA_FUNCTION_NAME="TelemaxKinesisProcessor"
-LAMBDA_ZIP_PATH="lambda/function.zip"
-DYNAMO_TABLE_NAME="TelemaxData"
+while [ $ATTEMPT -le $MAX_RETRIES ]; do
+  echo "🔄 Scan attempt $ATTEMPT/$MAX_RETRIES..."
 
-echo "🚀 Starting Telemax real-time data pipeline..."
+  ITEM_COUNT=$(aws dynamodb scan \
+    --table-name "$DYNAMO_TABLE_NAME" \
+    --select "COUNT" \
+    --query "Count" \
+    --output text)
 
-# ---------------------------------------------
-# Step 1: Create CloudFormation stack
-# ---------------------------------------------
-echo "📦 Deploying CloudFormation stack..."
+  if [ "$ITEM_COUNT" -gt 0 ]; then
+    echo "✅ Data detected in DynamoDB! ($ITEM_COUNT items)"
+    echo "📊 Full table scan output:"
+    aws dynamodb scan --table-name "$DYNAMO_TABLE_NAME"
+    break
+  fi
 
-aws cloudformation create-stack \
-  --stack-name "$STACK_NAME" \
-  --template-body "file://$TEMPLATE_PATH" \
-  --capabilities CAPABILITY_NAMED_IAM || \
-echo "⚠️ Stack already exists, continuing..."
+  echo "⏳ No data yet. Waiting ${SLEEP_SECONDS}s..."
+  sleep $SLEEP_SECONDS
+  ATTEMPT=$((ATTEMPT + 1))
+done
 
-echo "⏳ Waiting for CloudFormation stack to be CREATE_COMPLETE..."
-aws cloudformation wait stack-create-complete \
-  --stack-name "$STACK_NAME"
-
-echo "✅ CloudFormation stack is ready."
-
-# ---------------------------------------------
-# Step 2: Upload Lambda function code
-# ---------------------------------------------
-echo "🧩 Uploading Lambda function code..."
-aws lambda update-function-code \
-  --function-name "$LAMBDA_FUNCTION_NAME" \
-  --zip-file "fileb://$LAMBDA_ZIP_PATH"
-
-echo "✅ Lambda code uploaded."
-
-# ---------------------------------------------
-# Step 3: Check & install boto3 if needed
-# ---------------------------------------------
-echo "🔍 Checking for boto3..."
-
-if python -c "import boto3" &> /dev/null; then
-  echo "✅ boto3 is already installed."
-else
-  echo "📥 boto3 not found. Installing..."
-  pip install boto3
-  echo "✅ boto3 installed."
+if [ "$ATTEMPT" -gt "$MAX_RETRIES" ]; then
+  echo "❌ Timed out waiting for DynamoDB data."
+  exit 1
 fi
 
-# ---------------------------------------------
-# Step 4: Run the simulated device / producer
-# ---------------------------------------------
-echo "📡 Running Kinesis producer (simulated device)..."
-python producer/kinesis_producer.py
-
-# ---------------------------------------------
-# Step 5: Verify data in DynamoDB
-# ---------------------------------------------
-echo "🗄️ Scanning DynamoDB table for ingested data..."
-aws dynamodb scan --table-name "$DYNAMO_TABLE_NAME"
-
-echo "🎉 Pipeline execution completed successfully."
